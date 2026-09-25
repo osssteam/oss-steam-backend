@@ -61,7 +61,7 @@ const app = express();
 app.disable('x-powered-by');
 app.use(helmet());
 app.use(express.json({ limit: '20kb' }));
-app.use('/admin.html', express.static(path.join(__dirname, 'public', 'admin.html')));
+app.use('/admin.html', express.static(path.join(__dirname, 'admin.html')));
 
 app.use(cors({
   origin: ALLOWED_ORIGIN === '*' ? true : ALLOWED_ORIGIN.split(',').map(s => s.trim()),
