@@ -43,6 +43,7 @@ db.exec(`
     phone TEXT NOT NULL,
     nick TEXT,
     pass_hash TEXT,
+    email TEXT,
     status TEXT NOT NULL DEFAULT 'yangi',
     created_at TEXT NOT NULL,
     ip TEXT
@@ -87,6 +88,7 @@ const orderLimiter = rateLimit({
 
 // ---------- Validatsiya ----------
 const PHONE_RE = /^\+?[0-9\s\-()]{7,20}$/;
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 
 function validateOrder(body) {
   const errors = [];
@@ -95,6 +97,7 @@ function validateOrder(body) {
   const phone = String(body.phone || '').trim();
   const nick = String(body.nick || '').trim();
   const pass = String(body.pass || '').trim();
+  const email = String(body.email || '').trim();
 
   if (!['ready', 'new'].includes(service)) errors.push('Xizmat turi noto\'g\'ri.');
   if (name.length < 2 || name.length > 80) errors.push('Ism noto\'g\'ri kiritilgan.');
@@ -102,14 +105,15 @@ function validateOrder(body) {
   if (service === 'new') {
     if (nick.length < 3 || nick.length > 40) errors.push('Nik kamida 3 ta belgidan iborat bo\'lishi kerak.');
     if (pass.length < 8 || pass.length > 64) errors.push('Parol kamida 8 ta belgidan iborat bo\'lishi kerak.');
+    if (email && !EMAIL_RE.test(email)) errors.push('Email manzil noto\'g\'ri.');
   }
   // Oddiy XSS/in'ektsiyaga qarshi: boshqaruvchi belgilarni rad etamiz
   const CONTROL_CHARS = /[\u0000-\u0008\u000B\u000C\u000E-\u001F]/;
-  for (const v of [service, name, phone, nick]) {
+  for (const v of [service, name, phone, nick, email]) {
     if (CONTROL_CHARS.test(v)) errors.push('Ruxsat etilmagan belgilar aniqlandi.');
   }
 
-  return { errors, clean: { service, name, phone, nick, pass } };
+  return { errors, clean: { service, name, phone, nick, pass, email } };
 }
 
 function escapeHtml(str) {
@@ -133,6 +137,7 @@ async function sendTelegramNotification(order) {
   if (order.service === 'new') {
     lines.push(`🔤 Nik: ${escapeHtml(order.nick)}`);
     lines.push('🔒 Parol: admin panelda mavjud (xabarga chiqarilmaydi)');
+    if (order.email) lines.push(`📧 Email: ${escapeHtml(order.email)}`);
   }
   lines.push(`🕒 ${order.created_at}`);
 
@@ -163,8 +168,8 @@ app.post('/api/order', orderLimiter, async (req, res) => {
   const passHash = clean.pass ? hashSecret(clean.pass) : null;
 
   const stmt = db.prepare(`
-    INSERT INTO orders (service, name, phone, nick, pass_hash, status, created_at, ip)
-    VALUES (@service, @name, @phone, @nick, @pass_hash, 'yangi', @created_at, @ip)
+    INSERT INTO orders (service, name, phone, nick, pass_hash, email, status, created_at, ip)
+    VALUES (@service, @name, @phone, @nick, @pass_hash, @email, 'yangi', @created_at, @ip)
   `);
   const info = stmt.run({
     service: clean.service,
@@ -172,6 +177,7 @@ app.post('/api/order', orderLimiter, async (req, res) => {
     phone: clean.phone,
     nick: clean.nick || null,
     pass_hash: passHash,
+    email: clean.email || null,
     created_at,
     ip: req.ip,
   });
@@ -195,7 +201,7 @@ function requireAdmin(req, res, next) {
 }
 
 app.get('/api/admin/orders', requireAdmin, (req, res) => {
-  const rows = db.prepare('SELECT id, service, name, phone, nick, status, created_at FROM orders ORDER BY id DESC LIMIT 200').all();
+  const rows = db.prepare('SELECT id, service, name, phone, nick, email, status, created_at FROM orders ORDER BY id DESC LIMIT 200').all();
   res.json({ ok: true, orders: rows });
 });
 
